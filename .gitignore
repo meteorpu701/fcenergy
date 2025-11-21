@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+
+# Virtual environments
+.env/
+.venv/
+venv/
+ENV/
+
+# VS Code
+.vscode/
+
+# Data / logs (adjust as needed)
+data/simulated_trades/
+*.log

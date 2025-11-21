@@ -1,0 +1,13 @@
+pandas
+numpy
+torch
+matplotlib
+abides-jpmc-public
+coloredlogs
+gym
+ray[rllib]
+stable-baselines3
+tensorboardX
+scikit-learn
+flower
+pomegranate<1.0.0
