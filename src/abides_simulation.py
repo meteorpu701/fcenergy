@@ -3,40 +3,27 @@ import pandas as pd
 from abides_core import abides
 from abides_markets.configs import rmsc04
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "simulated_trades"
+from src.extract_agent_features import extract_agent_features
 
+OUT_DIR = Path(__file__).resolve().parents[1] / "data" / "simulated_trades"
 
-def run_rmsc04_simulation(date: str, output_path: Path | None = None):
-    """
-    Run the ABIDES RMSC04 market simulation for a single day.
-
-    Parameters:
-        date: "YYYY-MM-DD" (will be passed to build_config(date=...))
-        output_path: where to save a CSV (for now this will probably be empty
-                     until we wire up proper extraction from agents / order_books)
-    """
-    # If your build_config signature looks like:
-    # def build_config(seed=None, date=pd.Timestamp("2020-06-05"), log_orders=False, ...):
-    # then this is correct:
+def run_rmsc04_simulation(date: str):
     config = rmsc04.build_config(
         seed=123,
-        date=date,  
+        date=date,
         log_orders=False,
-        use_hub = True
     )
-
-    print(f"[ABIDES] Running RMSC04 for {date}...")
     end_state = abides.run(config)
-    print("[ABIDES] Simulation finished.")
-
-    # JPMC ABIDES often does NOT put trades in end_state["trades"].
-    # This will likely be empty for you:
-    trades = end_state.get("trades", [])
-
-    if output_path is not None:
-        df = pd.DataFrame(trades)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(output_path, index=False)
-        print(f"[ABIDES] Saved {len(df)} rows to {output_path}")
-
+    exch = end_state["agents"][0]  # ExchangeAgent
+    print("[DEBUG] exchange order_books keys:", list(exch.order_books.keys())[:10])
     return end_state
+
+def run_and_save_agent_features(date: str) -> Path:
+    end_state = run_rmsc04_simulation(date)
+    df = extract_agent_features(end_state, date)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / f"agent_features_{date}.csv"
+    df.to_csv(out_path, index=False)
+    print(f"[OK] Saved {len(df)} rows -> {out_path}")
+    return out_path
