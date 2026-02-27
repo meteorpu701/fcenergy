@@ -2,36 +2,37 @@
 from pathlib import Path
 import pandas as pd
 
-SIM_DIR = Path("data/simulated_trades")
-HUB_PATH = Path("data/hub_prices_processed.csv")
+IN_DIR = Path("data/simulated_trades")
 OUT_PATH = Path("data/exp1_dataset.csv")
 
-SCALE = 10_000 
-
 def main():
-    # 1) load all agent feature files
-    files = sorted(SIM_DIR.glob("agent_features_*.csv"))
+    files = sorted(IN_DIR.glob("agent_features_*.csv"))
     if not files:
-        raise RuntimeError("No agent_features_*.csv found. Run src.run_abides_days first.")
+        raise SystemExit(f"No agent feature files found in {IN_DIR}")
 
-    df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-    df["date"] = pd.to_datetime(df["date"])
+    parts = []
+    for f in files:
+        df = pd.read_csv(f)
 
-    # 2) load hub prices and make next-day label
-    hub = pd.read_csv(HUB_PATH, parse_dates=["date"]).sort_values("date")
-    hub["y_next_day"] = hub["price"].shift(-1)
+        # ensure date exists (some versions already have it)
+        if "date" not in df.columns:
+            # filename agent_features_YYYY-MM-DD.csv
+            date_str = f.stem.replace("agent_features_", "")
+            df["date"] = date_str
 
-    # 3) join on date
-    out = df.merge(hub[["date", "price", "y_next_day"]], on="date", how="left")
+        # keep only agent rows (drop exchange if present)
+        if "agent_type" in df.columns:
+            df = df[df["agent_type"] != "ExchangeAgent"].copy()
 
-    # 4) drop rows where label missing (end of series / missing days)
-    out = out.dropna(subset=["y_next_day"])
+        parts.append(df)
 
-    for col in ["best_bid", "best_ask", "mid", "avg_tx_price", "spread"]:
-        if col in out.columns:
-            out[col + "_scaled"] = out[col] / SCALE
+    out = pd.concat(parts, ignore_index=True)
 
-    # 5) save
+    # normalize dtypes
+    out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    out = out.dropna(subset=["date"])
+
+    # save
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(OUT_PATH, index=False)
     print(f"[OK] Saved dataset: {OUT_PATH}  rows={len(out)}  cols={len(out.columns)}")

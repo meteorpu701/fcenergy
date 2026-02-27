@@ -1,28 +1,13 @@
 # src/exp1_baselines_day.py
 import pandas as pd
 from pathlib import Path
-
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import Ridge
 
 DATA_PATH = Path("data/exp1_day_dataset.csv")
-
-FEATURES = [
-    "mid_mean",
-    "mid_std",
-    "mid_p10",
-    "mid_p90",
-    "spread_mean",
-    "spread_std",
-    "vol_mean",
-    "vol_sum",
-    "quote_coverage",
-    "n_agents_with_quotes",
-    "n_agents_total",
-]
+LAGS = 3
 
 def rmse(y_true, y_pred):
     return mean_squared_error(y_true, y_pred) ** 0.5
@@ -32,31 +17,35 @@ def main():
 
     y = df["y_next_day"].astype(float)
 
-    # naive baseline: tomorrow ≈ today
-    naive_pred = df["price"].astype(float)
-    print("=== Naive baseline (y_next_day ≈ price_today) ===")
+    # Naive baseline: y_{t+1} = y_t  (use price_lag1 as "today")
+    naive_pred = df["price_lag1"].astype(float)
+    print("=== Naive baseline (AR1: y_{t+1}=y_t) ===")
     print("MAE:", mean_absolute_error(y, naive_pred))
     print("RMSE:", rmse(y, naive_pred))
 
-    X = df[FEATURES]
+    # AR-only baseline: use only lagged price
+    ar_cols = [f"price_lag{i}" for i in range(1, LAGS+1)]
 
-    # time-aware split (important)
+    # ARX baseline: lagged price + lagged microstructure summaries
+    base_feats = ["mid_mean","spread_mean","vol_sum","fills_sum","quote_coverage"]
+    arx_cols = ar_cols + [f"{c}_lag{i}" for c in base_feats for i in range(1, LAGS+1)]
+
+    # time split
     split = int(len(df) * 0.8)
-    X_train, X_test = X.iloc[:split], X.iloc[split:]
+    train, test = df.iloc[:split], df.iloc[split:]
     y_train, y_test = y.iloc[:split], y.iloc[split:]
 
-    model = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("ridge", Ridge(alpha=1.0)),
-    ])
+    def fit_eval(cols, name):
+        X_train, X_test = train[cols], test[cols]
+        model = Pipeline([("imp", SimpleImputer(strategy="median")), ("ridge", Ridge(alpha=1.0))])
+        model.fit(X_train, y_train)
+        pred = model.predict(X_test)
+        print(f"\n=== {name} ===")
+        print("MAE:", mean_absolute_error(y_test, pred))
+        print("RMSE:", rmse(y_test, pred))
 
-    model.fit(X_train, y_train)
-    pred = model.predict(X_test)
-
-    print("\n=== Centralized Ridge baseline (day-level, time split) ===")
-    print("MAE:", mean_absolute_error(y_test, pred))
-    print("RMSE:", rmse(y_test, pred))
-    print("R2:", r2_score(y_test, pred))
+    fit_eval(ar_cols, "Centralized AR-only Ridge")
+    fit_eval(arx_cols, "Centralized ARX Ridge (lags + microstructure)")
 
 if __name__ == "__main__":
     main()

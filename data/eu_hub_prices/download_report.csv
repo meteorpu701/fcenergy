@@ -1,0 +1,6 @@
+hub,source,ok,rows,path,details
+TTF,yahoo,True,1336,data/eu_hub_prices/TTF_yahoo.csv,ticker=TTF=F
+NBP,yahoo,True,1335,data/eu_hub_prices/NBP_yahoo.csv,ticker=NBP=F
+THE,eex,False,0,,EEX returned 401 Unauthorized. Your account likely has no API access enabled yet.
+PEG,eex,False,0,,EEX returned 401 Unauthorized. Your account likely has no API access enabled yet.
+PSV,eex,False,0,,EEX returned 401 Unauthorized. Your account likely has no API access enabled yet.
