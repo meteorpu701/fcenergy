@@ -10,16 +10,11 @@ from src.fed_model import MLPRegressor
 from src.federated_client import train_local
 from src.federated_server import fedavg, eval_rmse
 
-DATA_PATH = Path("data/exp1_day_dataset_controlled.csv")
-OUT_LOG = Path("data/exp1_fedavg_controlled_log.csv")
+DATA_PATH = Path("data/exp1_day_dataset.csv")
+OUT_LOG = Path("data/exp1_fedavg_arx_log.csv")
 
-FEATURES = [
-    "mid_mean","mid_std","mid_p10","mid_p90",
-    "spread_mean","spread_std",
-    "vol_mean","vol_sum",
-    "quote_coverage",
-]
-TARGET = "y_synth"
+LAGS = 3
+BASE_FEATS = ["mid_mean", "spread_mean", "vol_sum", "fills_sum", "quote_coverage"]
 
 def make_loader(X, y, batch_size=16, shuffle=True):
     ds = TensorDataset(torch.tensor(X, dtype=torch.float32), torch.tensor(y, dtype=torch.float32))
@@ -28,8 +23,12 @@ def make_loader(X, y, batch_size=16, shuffle=True):
 def main():
     df = pd.read_csv(DATA_PATH, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
 
-    X = df[FEATURES].astype(float).to_numpy()
-    y = df[TARGET].astype(float).to_numpy()
+    # Build ARX feature list: price lags + lagged microstructure
+    ar_cols = [f"price_lag{i}" for i in range(1, LAGS + 1)]
+    arx_cols = ar_cols + [f"{c}_lag{i}" for c in BASE_FEATS for i in range(1, LAGS + 1)]
+
+    X = df[arx_cols].astype(float).to_numpy()
+    y = df["y_next_day"].astype(float).to_numpy()
 
     # time split
     split = int(len(df) * 0.8)
@@ -43,27 +42,29 @@ def main():
     X_train = (X_train - mu) / sigma
     X_test = (X_test - mu) / sigma
 
-    # clients = 10 chunks of training days
+    # Clients: split training days into K chunks (each chunk = a "client")
+    # This matches the "fragmented views" setup in a simple and defensible way.
     K = 10
-    # sort days by volume to create heterogeneity
-    order = np.argsort(df.iloc[:split]["vol_sum"].to_numpy())
-    chunks = np.array_split(order, K)
+    idx = np.arange(len(X_train))
+    chunks = np.array_split(idx, K)
     clients = [(X_train[c], y_train[c]) for c in chunks]
 
     test_loader = make_loader(X_test, y_test, batch_size=32, shuffle=False)
 
-    # stable settings (as we discussed)
-    rounds = 30
+    # Stable settings
+    rounds = 50
     clients_per_round = 10
-    local_epochs = 5
+    local_epochs = 10
     lr = 3e-3
-    batch_size = 16
+    batch_size = 8
     device = "cpu"
 
     global_model = MLPRegressor(d_in=X_train.shape[1])
 
     logs = []
     rng = np.random.default_rng(0)
+
+    print(f"[INFO] rows={len(df)} train={len(X_train)} test={len(X_test)} features={X_train.shape[1]}")
 
     for r in range(1, rounds + 1):
         chosen = rng.choice(K, size=clients_per_round, replace=False)

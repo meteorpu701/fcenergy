@@ -1,18 +1,20 @@
 # src/run_abides_days.py
-import pandas as pd
+
 from pathlib import Path
+import pandas as pd
 from src.abides_simulation import run_and_save_agent_features
 
-def main():
-    hub = pd.read_csv("data/hub_prices_processed.csv", parse_dates=["date"]).sort_values("date")
-    N_DAYS = 60
-    days = hub["date"].dt.strftime("%Y-%m-%d").iloc[:N_DAYS]
+EU_PRICES = Path("data/eu_hub_prices.csv")
 
-    for d in days:
-        out = Path("data/simulated_trades") / f"agent_features_{d}.csv"
-        if out.exists():
-            print(f"[SKIP] {d} already exists")
-            continue
+def main():
+    df = pd.read_csv(EU_PRICES, parse_dates=["date"])
+    ttf = df[df["hub"] == "TTF"].sort_values("date")
+
+    dates = [d.strftime("%Y-%m-%d") for d in ttf["date"].tolist()]
+
+    print(f"[INFO] Simulating {len(dates)} TTF days...")
+
+    for d in dates:
         print(f"[RUN] {d}")
         run_and_save_agent_features(d)
 
