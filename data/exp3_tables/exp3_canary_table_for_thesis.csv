@@ -1,0 +1,6 @@
+privacy_sigma,mean_final_rmse_ret,std_final_rmse_ret,mean_final_rmse_price,std_final_rmse_price,mean_final_canary_rmse,std_final_canary_rmse
+0.0,0.0625,0.0456,3.6474,3.1657,0.213,0.1169
+0.01,0.0784,0.0445,4.7719,3.0932,0.2306,0.2187
+0.05,0.0796,0.0457,4.8189,3.1827,0.055,0.061
+0.1,0.098,0.0321,5.9968,2.5365,0.1605,0.1704
+0.2,0.0785,0.0444,4.7588,3.1141,0.0979,0.1245

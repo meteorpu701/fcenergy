@@ -6,9 +6,9 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.fed_model import MLPRegressor
-from src.federated_client import train_local
-from src.federated_server import fedavg, eval_rmse
+from src.fl.core.fed_model import MLPRegressor
+from src.fl.core.federated_client import train_local
+from src.fl.core.federated_server import fedavg, eval_rmse
 
 DATA_PATH = Path("data/exp1_day_dataset.csv")
 OUT_LOG = Path("data/exp1_fedavg_arx_log.csv")
