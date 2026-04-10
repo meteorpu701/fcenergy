@@ -7,9 +7,9 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.fed_model import MLPRegressor
-from src.federated_client import train_local
-from src.federated_server import fedavg
+from src.fl.core.fed_model import MLPRegressor
+from src.fl.core.federated_client import train_local
+from src.fl.core.federated_server import FederatedServer
 
 
 DATA_PATH = Path("data/exp1_day_dataset_abides.csv")
@@ -132,6 +132,7 @@ def main():
     device = "cpu"
 
     global_model = MLPRegressor(d_in=X_train.shape[1])
+    server = FederatedServer(model=global_model, algorithm="fedavg")
 
     logs = []
     rng = np.random.default_rng(0)
@@ -154,17 +155,15 @@ def main():
     for r in range(1, rounds + 1):
         chosen = rng.choice(K, size=clients_per_round, replace=False)
 
-        local_states = []
-        local_weights = []
+        client_updates = []
 
         for cid in chosen:
             Xm, ym = clients[cid]
             loader = make_loader(Xm, ym, batch_size=batch_size, shuffle=True)
 
             local_model = MLPRegressor(d_in=X_train.shape[1])
-            local_model.load_state_dict(
-                copy.deepcopy(global_model.state_dict())
-            )
+            # sync from server weights (not global_model directly)
+            local_model.load_state_dict(copy.deepcopy(server.server_state["weights"]))
 
             train_local(
                 local_model,
@@ -174,15 +173,16 @@ def main():
                 device=device,
             )
 
-            local_states.append(
-                copy.deepcopy(local_model.state_dict())
-            )
-            local_weights.append(len(Xm))
+            client_updates.append({
+                "weights": copy.deepcopy(local_model.state_dict()),
+                "n_samples": int(len(Xm)),
+            })
 
-        w = np.array(local_weights, dtype=float)
-        w = (w / w.sum()).tolist()
+        # server-side FedAvg aggregation
+        server.aggregate(client_updates)
 
-        global_model.load_state_dict(fedavg(local_states, w))
+        # global_model is the same object as server.model, but keep this explicit if you want
+        global_model = server.model
 
         rmse = eval_rmse_unscaled(
             global_model,
