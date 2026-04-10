@@ -17,20 +17,16 @@ def main():
 
     y = df["y_next_day"].astype(float)
 
-    # Naive baseline: y_{t+1} = y_t  (use price_lag1 as "today")
     naive_pred = df["price_lag1"].astype(float)
     print("=== Naive baseline (AR1: y_{t+1}=y_t) ===")
     print("MAE:", mean_absolute_error(y, naive_pred))
     print("RMSE:", rmse(y, naive_pred))
 
-    # AR-only baseline: use only lagged price
     ar_cols = [f"price_lag{i}" for i in range(1, LAGS+1)]
 
-    # ARX baseline: lagged price + lagged microstructure summaries
     base_feats = ["mid_mean","spread_mean","vol_sum","fills_sum","quote_coverage"]
     arx_cols = ar_cols + [f"{c}_lag{i}" for c in base_feats for i in range(1, LAGS+1)]
 
-    # time split
     split = int(len(df) * 0.8)
     train, test = df.iloc[:split], df.iloc[split:]
     y_train, y_test = y.iloc[:split], y.iloc[split:]

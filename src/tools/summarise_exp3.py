@@ -142,21 +142,17 @@ def summarise_canary_files():
 
 
 def main():
-    # Short clip-only setting
     clip_short = summarise_clip_files(
         pattern="exp3_clip_sigma_*.csv",
         out_name="exp3_clip_summary_short.csv",
         include_seed=False,
     )
 
-    # Long clip-only setting
     clip_long = summarise_clip_files(
         pattern="exp3_long_clip_sigma_*_seed*.csv",
         out_name="exp3_clip_summary_long.csv",
         include_seed=True,
     )
-
-    # Canary runs
     canary_by_seed, canary_agg, canary_thesis = summarise_canary_files()
 
     print("Wrote tables to:", OUT_DIR.resolve())

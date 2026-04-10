@@ -25,27 +25,19 @@ def _parse_args():
 
 
 def _aggregate_one_day(df: pd.DataFrame) -> dict:
-    """
-    Input: agent_features for one day (many rows).
-    Output: one dict of aggregated features.
-    """
-    # Make sure numeric columns are numeric
     num_cols = ["best_bid", "best_ask", "mid", "spread", "n_fills", "transacted_volume", "avg_tx_price"]
     for c in num_cols:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Basic counts
     out = {}
     out["n_agents"] = len(df)
 
-    # Agent-type distribution (helps model learn composition)
     if "agent_type" in df.columns:
         counts = df["agent_type"].value_counts(dropna=False)
         for k, v in counts.items():
             out[f"n_type_{k}"] = int(v)
 
-    # Spread / midpoint stats
     def add_stats(prefix: str, series: pd.Series):
         out[f"{prefix}_mean"] = float(series.mean()) if series.notna().any() else None
         out[f"{prefix}_std"] = float(series.std()) if series.notna().any() else None
@@ -58,7 +50,6 @@ def _aggregate_one_day(df: pd.DataFrame) -> dict:
     if "spread" in df.columns:
         add_stats("spread", df["spread"])
 
-    # Trade activity
     if "n_fills" in df.columns:
         out["fills_total"] = float(df["n_fills"].sum(skipna=True))
         out["fills_mean_per_agent"] = float(df["n_fills"].mean()) if df["n_fills"].notna().any() else None
@@ -67,7 +58,6 @@ def _aggregate_one_day(df: pd.DataFrame) -> dict:
         out["vol_total"] = float(df["transacted_volume"].sum(skipna=True))
         out["vol_mean_per_agent"] = float(df["transacted_volume"].mean()) if df["transacted_volume"].notna().any() else None
 
-    # A rough market-wide VWAP proxy: volume-weighted avg of agent avg_tx_price
     if "avg_tx_price" in df.columns and "transacted_volume" in df.columns:
         px = df["avg_tx_price"]
         w = df["transacted_volume"]
@@ -80,33 +70,21 @@ def _aggregate_one_day(df: pd.DataFrame) -> dict:
     return out
 
 def add_exp2a_targets(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add Option-A target for Exp2a:
-      - log_ret_next = log(target_next_price) - log(price)
-
-    Assumes df already contains:
-      - price (today)
-      - target_next_price (next day)
-    """
     out = df.copy()
 
-    # ensure required columns exist
     if "price" not in out.columns:
         raise KeyError("Dataset missing required column: price")
     if "target_next_price" not in out.columns:
         raise KeyError("Dataset missing required column: target_next_price")
 
-    # enforce numeric
     out["price"] = pd.to_numeric(out["price"], errors="coerce")
     out["target_next_price"] = pd.to_numeric(out["target_next_price"], errors="coerce")
 
-    # guard: strictly positive for log
     mask = (out["price"] > 0) & (out["target_next_price"] > 0)
     out = out[mask].copy()
 
     out["log_ret_next"] = np.log(out["target_next_price"]) - np.log(out["price"])
 
-    # nice-to-have: stable ordering (date is currently a string)
     out = out.sort_values(["hub", "date"]).reset_index(drop=True)
 
     return out
@@ -124,7 +102,6 @@ def main():
     if not features_dir.exists():
         raise FileNotFoundError(f"Missing features dir: {features_dir}")
 
-    # Load hub prices
     prices = pd.read_csv(prices_path, parse_dates=["date"])
     if not {"hub", "date", "price"}.issubset(prices.columns):
         raise KeyError("prices CSV must include columns: hub, date, price")
@@ -132,12 +109,10 @@ def main():
     prices = prices.dropna(subset=["price"]).copy()
     prices["date"] = prices["date"].dt.strftime("%Y-%m-%d")
 
-    # Build next-day target within each hub
     prices = prices.sort_values(["hub", "date"]).copy()
     prices["target_next_price"] = prices.groupby("hub")["price"].shift(-1)
     prices["target_next_date"] = prices.groupby("hub")["date"].shift(-1)
 
-    # Index for merge (hub, date)
     prices_keyed = prices.set_index(["hub", "date"])
 
     rows = []
@@ -149,14 +124,12 @@ def main():
         hub = m.group("hub")
         date_str = m.group("date")
 
-        # Match label exists?
         if (hub, date_str) not in prices_keyed.index:
             continue
 
         df = pd.read_csv(fp)
         agg = _aggregate_one_day(df)
 
-        # Attach identifiers
         rec = {
             "hub": hub,
             "date": date_str,
@@ -165,7 +138,6 @@ def main():
         }
         rec.update(agg)
 
-        # Attach price and target
         p = prices_keyed.loc[(hub, date_str)]
         rec["price"] = float(p["price"])
         rec["target_next_price"] = None if pd.isna(p["target_next_price"]) else float(p["target_next_price"])
@@ -175,12 +147,10 @@ def main():
 
     ds = pd.DataFrame(rows)
 
-    # Drop rows with missing next-day target (last day per hub)
     before = len(ds)
     ds = ds.dropna(subset=["target_next_price"]).copy()
     after = len(ds)
 
-    # Add Option-A target (log return)
     ds = add_exp2a_targets(ds)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

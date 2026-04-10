@@ -3,33 +3,28 @@ import pandas as pd
 from pathlib import Path
 from src.common.utils import add_lag_features
 
-IN_PATH = Path("data/exp1_dataset.csv")       # agent-level rows
+IN_PATH = Path("data/exp1_dataset.csv")       
 EU_PRICE_PATH = Path("data/eu_hub_prices.csv")
-OUT_PATH = Path("data/exp1_day_dataset.csv")  # day-level ARX dataset
+OUT_PATH = Path("data/exp1_day_dataset.csv") 
 
 LAGS = 3
-SCALE = 10000.0  # ABIDES integer-ish price scale (e.g., 100000)
+SCALE = 10000.0 
 
 def main():
     df = pd.read_csv(IN_PATH, parse_dates=["date"]).sort_values("date")
 
-    # --- Create scaled columns if raw exist ---
     for col in ["best_bid", "best_ask", "mid", "spread", "avg_tx_price"]:
         if col in df.columns and f"{col}_scaled" not in df.columns:
             df[f"{col}_scaled"] = pd.to_numeric(df[col], errors="coerce") / SCALE
 
-    # If mid_scaled missing but bid/ask exist, compute it
     if "mid_scaled" not in df.columns and "best_bid_scaled" in df.columns and "best_ask_scaled" in df.columns:
         df["mid_scaled"] = (df["best_bid_scaled"] + df["best_ask_scaled"]) / 2.0
 
-    # If spread_scaled missing but bid/ask exist, compute it
     if "spread_scaled" not in df.columns and "best_bid_scaled" in df.columns and "best_ask_scaled" in df.columns:
         df["spread_scaled"] = (df["best_ask_scaled"] - df["best_bid_scaled"])
 
     use_market_obs = ("mid_scaled" in df.columns) and df["mid_scaled"].notna().any()
 
-    # --- Day-level aggregation (market-state representation) ---
-    # Always-available (firm-observable proxies)
     by_day = df.groupby("date", sort=True)
 
     day_dict = {
@@ -39,7 +34,6 @@ def main():
         "vol_mean": by_day["transacted_volume"].mean(),
     }
 
-    # Optional market observables (if present)
     if use_market_obs:
         df_valid = df.dropna(subset=["mid_scaled"])
         g = df_valid.groupby("date", sort=True)
@@ -57,7 +51,6 @@ def main():
 
     day = pd.DataFrame(day_dict).reset_index()
 
-    # Quote coverage: fraction of agents with a quote (only meaningful if market obs exist)
     if use_market_obs:
         n_agents_total = df.groupby("date")["agent_id"].size()
         n_agents_with_quotes = df.dropna(subset=["mid_scaled"]).groupby("date")["agent_id"].size()
@@ -67,7 +60,6 @@ def main():
     else:
         day["quote_coverage"] = 0.0
 
-    # --- Attach target from EU hub prices (Exp1 = TTF only) ---
     prices = pd.read_csv(EU_PRICE_PATH, parse_dates=["date"])
     prices = prices[prices["hub"] == "TTF"].sort_values("date").copy()
     prices["price"] = pd.to_numeric(prices["price"], errors="coerce")
@@ -76,21 +68,17 @@ def main():
     prices["y_next_day"] = prices["price"].shift(-1)
     prices = prices.dropna(subset=["y_next_day"])
 
-    # Merge on date intersection
     out = day.merge(prices[["date", "price", "y_next_day"]], on="date", how="inner")
 
-    # --- Add ARX lags ---
     base_feature_cols = [
         "fills_sum", "fills_mean", "vol_sum", "vol_mean", "quote_coverage", "price"
     ]
-    # only lag columns that exist (mid/spread might be absent)
     for c in ["mid_mean", "mid_std", "spread_mean", "spread_std"]:
         if c in out.columns:
             base_feature_cols.append(c)
 
     out = add_lag_features(out, cols_to_lag=base_feature_cols, max_lag=LAGS, group_cols=None, time_col="date")
 
-    # Drop rows without full history
     required = [f"{c}_lag{L}" for c in base_feature_cols for L in range(1, LAGS + 1)]
     out = out.dropna(subset=required).reset_index(drop=True)
 

@@ -1,23 +1,3 @@
-"""
-Download EU natural gas hub prices.
-
-Policy:
-1) Try Yahoo Finance via yfinance for each hub ticker.
-2) Only if Yahoo fails/empty -> try EEX DataSource REST (getSpot/csv style).
-3) Write one CSV per hub + a download report CSV you can cite in the thesis.
-
-Usage:
-  python -m src.pull_eu_hubs_non_yahoo --start 2020-11-01 --end 2026-02-26
-
-Env vars for EEX (only needed if you want fallback to work):
-  export EEX_USER="..."
-  export EEX_PASS="..."
-
-Notes:
-- Yahoo tickers are not guaranteed to exist for all hubs.
-- EEX endpoints require access; if you get 401, you need EEX to enable your account.
-"""
-
 from __future__ import annotations
 
 import os
@@ -42,10 +22,6 @@ except Exception:
     requests = None
 
 
-# -----------------------
-# Configuration
-# -----------------------
-
 OUT_DIR = Path("data/eu_hub_prices")
 REPORT_PATH = OUT_DIR / "download_report.csv"
 
@@ -59,10 +35,6 @@ HUBS = {
 
 EEX_BASE = "https://api1.datasource.eex-group.com/getSpot/csv"
 
-
-# -----------------------
-# Helpers
-# -----------------------
 
 def iso(d: date) -> str:
     return d.isoformat()
@@ -79,22 +51,17 @@ def daterange(start: date, end: date) -> List[date]:
 @dataclass
 class DownloadResult:
     hub: str
-    source: str              # "yahoo" or "eex"
+    source: str             
     ok: bool
     rows: int
     path: str
     details: str
 
 
-# -----------------------
-# Yahoo (yfinance)
-# -----------------------
-
 def download_from_yahoo(hub: str, ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
     if yf is None:
         raise RuntimeError("yfinance not installed. pip install yfinance")
 
-    # IMPORTANT FIX: ensure ticker is a string (not a tuple)
     ticker = str(ticker)
 
     df = yf.download(
@@ -110,13 +77,11 @@ def download_from_yahoo(hub: str, ticker: str, start: str, end: str) -> Optional
     if df is None or df.empty:
         return None
 
-    # If Yahoo returns MultiIndex columns, flatten them
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [c[0] for c in df.columns]
 
     df = df.reset_index()
 
-    # Normalize columns
     rename = {}
     for c in df.columns:
         if c == "Date":
@@ -131,11 +96,6 @@ def download_from_yahoo(hub: str, ticker: str, start: str, end: str) -> Optional
     df["ticker"] = ticker
     df["source"] = "Yahoo Finance (via yfinance)"
     return df
-
-
-# -----------------------
-# EEX fallback (only for hubs that fail Yahoo)
-# -----------------------
 
 def eex_auth():
     user = os.getenv("EEX_USER")
@@ -201,11 +161,6 @@ def download_from_eex(hub: str, marketarea: str, start: str, end: str) -> Option
     df["source"] = "EEX Group DataSource (getSpot/csv)"
     return df
 
-
-# -----------------------
-# Main
-# -----------------------
-
 def save_df(df: pd.DataFrame, out_path: Path):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
@@ -236,8 +191,6 @@ def main():
         eex_marketarea = cfg.get("eex_marketarea")
 
         used_fallback = False
-
-        # 1) Yahoo
         if yahoo_ticker:
             try:
                 dfy = download_from_yahoo(hub, yahoo_ticker, args.start, args.end)
@@ -257,7 +210,6 @@ def main():
                 used_fallback = True
                 print(f"[MISS] {hub} Yahoo failed ({repr(e)}) -> will try EEX fallback")
 
-        # 2) EEX fallback ONLY if Yahoo failed
         if used_fallback:
             try:
                 dfe = download_from_eex(hub, eex_marketarea, args.start, args.end)
@@ -293,8 +245,6 @@ def main():
                 details="No Yahoo ticker configured."
             ))
             print(f"[SKIP] {hub} no Yahoo ticker configured.")
-
-    # IMPORTANT FIX: pass report_path
     append_report(results, report_path)
     print(f"[OK] wrote report -> {report_path}")
 

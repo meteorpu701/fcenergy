@@ -8,10 +8,6 @@ def add_lag_features(
     group_cols: Optional[List[str]] = None,
     time_col: str = "date",
 ) -> pd.DataFrame:
-    """
-    Adds lagged features for cols_to_lag up to max_lag.
-    If group_cols is provided (e.g., ["hub"]), lags are computed within each group.
-    """
     df = df.copy()
     sort_cols = (group_cols or []) + [time_col]
     df = df.sort_values(sort_cols)

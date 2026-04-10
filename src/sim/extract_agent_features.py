@@ -23,10 +23,6 @@ def _safe_call(obj: Any, method: str, *args):
 
 
 def _parse_triplet(x) -> Tuple[Optional[float], Optional[float], Optional[float]]:
-    """
-    Parses values like "(99995, 99996, 99996)" or "(None, None, None)" into floats/Nones.
-    Handles tuple objects or stringified tuples.
-    """
     if x is None:
         return None, None, None
 
@@ -36,7 +32,6 @@ def _parse_triplet(x) -> Tuple[Optional[float], Optional[float], Optional[float]
                 None if a is None else float(a),
                 None if m is None else float(m))
 
-    # string case
     if isinstance(x, str):
         try:
             t = ast.literal_eval(x)
@@ -52,19 +47,13 @@ def _parse_triplet(x) -> Tuple[Optional[float], Optional[float], Optional[float]
 
 
 def _get_executed_orders(agent: Any, symbol: str):
-    """
-    Try to pull executed orders for this symbol from common ABIDES agent storage.
-    We keep this defensive because different agent types store differently.
-    """
     eo = getattr(agent, "executed_orders", None)
     if eo is None:
         return None
 
-    # Often a dict: symbol -> list
     if isinstance(eo, dict):
         return eo.get(symbol)
 
-    # Sometimes just a list of fills
     if isinstance(eo, list):
         return eo
 
@@ -72,13 +61,6 @@ def _get_executed_orders(agent: Any, symbol: str):
 
 
 def _trade_stats_from_fills(fills):
-    """
-    Given a list of fill objects/dicts, compute:
-      - n_fills
-      - total_qty
-      - vwap
-    If we can't read price/qty, returns None.
-    """
     if not fills:
         return 0, 0.0, None
 
@@ -87,7 +69,6 @@ def _trade_stats_from_fills(fills):
     n = 0
 
     for f in fills:
-        # try common patterns: dict or object with attributes
         px = None
         qty = None
 
@@ -125,11 +106,9 @@ def extract_agent_features(end_state: dict, date_str: str, symbol: str = DEFAULT
         best_bid, best_ask, mid = _parse_triplet(known_triplet)
         spread = None if (best_bid is None or best_ask is None) else (best_ask - best_bid)
 
-        # First try ABIDES helper methods
         avg_tx = _safe_call(agent, "get_average_transaction_price", symbol)
         vol = _safe_call(agent, "get_transacted_volume", symbol)
 
-        # Fallback: compute from executed orders if methods are None
         fills = _get_executed_orders(agent, symbol)
         n_fills, total_qty, vwap = _trade_stats_from_fills(fills)
 
@@ -143,13 +122,11 @@ def extract_agent_features(end_state: dict, date_str: str, symbol: str = DEFAULT
             "agent_id": getattr(agent, "id", None),
             "agent_type": agent_type,
 
-            # order book / quote features
             "best_bid": best_bid,
             "best_ask": best_ask,
             "mid": mid,
             "spread": spread,
 
-            # trade activity features
             "n_fills": n_fills,
             "transacted_volume": vol,
             "avg_tx_price": avg_tx,

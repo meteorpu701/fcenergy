@@ -7,10 +7,6 @@ class FedAvg:
     name = "fedavg"
 
     def aggregate(self, server_state: Dict, client_updates: List[Dict]) -> Dict:
-        """
-        server_state: {"weights": state_dict}
-        client_updates: [{"weights": state_dict, "n_samples": int}, ...]
-        """
         if not client_updates:
             return server_state
 
@@ -23,7 +19,6 @@ class FedAvg:
 
         total = sum(sample_counts)
         if total <= 0:
-            # fallback: uniform average if sample counts are unusable
             weights = [1.0 / len(sample_counts)] * len(sample_counts)
         else:
             weights = [n / total for n in sample_counts]

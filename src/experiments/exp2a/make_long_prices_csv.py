@@ -14,7 +14,6 @@ FILES = {
 
 
 def _find_price_col(df: pd.DataFrame) -> str:
-    # common yahoo export columns: "Adj Close", "Close"
     for c in ["Adj Close", "Close", "close", "adjclose"]:
         if c in df.columns:
             return c
@@ -29,7 +28,6 @@ def main():
 
         df = pd.read_csv(fp)
 
-        # find date col
         date_col = "Date" if "Date" in df.columns else "date" if "date" in df.columns else None
         if date_col is None:
             raise KeyError(f"{fp} missing Date column. columns={list(df.columns)}")
@@ -45,7 +43,6 @@ def main():
 
         out = out.dropna(subset=["date", "price"]).copy()
 
-        # ensure string format your pipeline likes (but still parseable)
         out["date"] = out["date"].dt.strftime("%Y-%m-%d")
 
         rows.append(out)

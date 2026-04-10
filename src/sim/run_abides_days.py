@@ -19,14 +19,12 @@ def _parse_args() -> argparse.Namespace:
         description="Run ABIDES day-by-day for one or more EU gas hubs using a hub price CSV."
     )
 
-    # Single hub mode (kept for backwards compat)
     ap.add_argument(
         "--hub",
         default=None,
         help='Single hub code in your price CSV (e.g. "TTF", "NBP", "FIN"). If set, overrides --hubs.',
     )
 
-    # Multi hub mode
     ap.add_argument(
         "--hubs",
         default="TTF",
@@ -92,7 +90,6 @@ def _load_dates(prices_path: str, hub: str, start: str | None, end: str | None) 
     if end is not None:
         sub = sub[sub["date"] <= pd.to_datetime(end)]
 
-    # Keep only rows with a valid numeric price (important if your CSV has blanks)
     sub["price"] = pd.to_numeric(sub["price"], errors="coerce")
     sub = sub.dropna(subset=["price"])
 
@@ -101,9 +98,6 @@ def _load_dates(prices_path: str, hub: str, start: str | None, end: str | None) 
 
 
 def _already_done(out_dir: Path, hub: str, date_str: str) -> bool:
-    """
-    Skip-check: if agent-level features already exist for this hub+date, we assume the day was simulated.
-    """
     expected = out_dir / f"agent_features_{hub}_{date_str}.csv"
     return expected.exists()
 
@@ -145,7 +139,6 @@ def main() -> None:
 
             print(f"[RUN] hub={hub} date={d}")
             try:
-                # IMPORTANT: pass hub+prices down so exp2a can use the correct hub series
                 run_and_save_agent_features(date=d, hub=hub, prices_csv=args.prices)
                 totals["ran"] += 1
             except KeyboardInterrupt:

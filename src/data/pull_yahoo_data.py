@@ -6,26 +6,17 @@ import pandas as pd
 import yfinance as yf
 
 OUT_PATH = Path("data/raw_nbp_yahoo.csv")
-
-# Known-to-work (commonly) on Yahoo:
-# - TTF=F : Dutch TTF Natural Gas
-# - NBP=F : UK NBP Natural Gas
-#
-# The rest are left as optional candidates; many will fail on Yahoo.
 CANDIDATES = {
     #"TTF": "TTF=F",
     "NBP": "NBP=F",
 
-    # Optional candidates (likely to fail on Yahoo; keep here only if you want to test)
+    # Optional candidates
     # "PEG": "PEG=F",
     # "THE": "THE=F",
     # "PSV": "PSV=F",
 }
 
 def download_one(symbol: str, period: str = "5y") -> pd.DataFrame:
-    """
-    Returns DataFrame indexed by date with a single column 'price' (Adj Close if exists else Close).
-    """
     df = yf.download(symbol, period=period, interval="1d", auto_adjust=False, progress=False)
     if df is None or df.empty:
         return pd.DataFrame()

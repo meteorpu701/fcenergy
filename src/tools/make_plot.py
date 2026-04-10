@@ -5,9 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-# ----------------------------
-# Paths
-# ----------------------------
 BASE_DIR = Path("data")
 OUT_DIR = BASE_DIR / "chapter5_plots"
 OUT_DIR.mkdir(exist_ok=True)
@@ -16,13 +13,8 @@ EXP1_LOG = BASE_DIR / "exp1_fedavg_abides_log.csv"
 EXP2B = BASE_DIR / "exp2b_grid_summary.csv"
 EXP2C = BASE_DIR / "exp2c_grid_summary_long.csv"
 
-# Exp3 canary files
 EXP3_FILES = sorted(BASE_DIR.glob("exp3_canary_sigma*_seed*.csv"))
 
-
-# ----------------------------
-# Helpers
-# ----------------------------
 def savefig(name: str) -> None:
     plt.tight_layout()
     plt.savefig(OUT_DIR / name, dpi=300, bbox_inches="tight")
@@ -30,11 +22,6 @@ def savefig(name: str) -> None:
 
 
 def extract_sigma_seed(path: Path):
-    """
-    Parse filenames like:
-      exp3_canary_sigma0_seed0.csv
-      exp3_canary_sigma0.01_seed4.csv
-    """
     m = re.search(r"sigma([0-9.]+)_seed([0-9]+)", path.name)
     if not m:
         raise ValueError(f"Could not parse sigma/seed from {path.name}")
@@ -42,7 +29,6 @@ def extract_sigma_seed(path: Path):
 
 
 def final_row(df: pd.DataFrame) -> pd.Series:
-    """Return the final round row."""
     return df.sort_values("round").iloc[-1]
 
 
@@ -53,13 +39,9 @@ def style_axes(ax, xlabel: str = "", ylabel: str = "", title: str = ""):
     ax.grid(True, alpha=0.3)
 
 
-# ----------------------------
-# Exp1 plots
-# ----------------------------
 def plot_exp1():
     df = pd.read_csv(EXP1_LOG)
 
-    # Line plot: test RMSE across rounds
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.plot(df["round"], df["test_rmse"], marker="o", markersize=3)
     best_idx = df["test_rmse"].idxmin()
@@ -80,7 +62,6 @@ def plot_exp1():
     )
     savefig("exp1_fedavg_test_rmse_rounds.png")
 
-    # Baseline comparison bar chart
     methods = [
         "Naive AR(1)",
         "Centralized AR-only Ridge",
@@ -106,10 +87,6 @@ def plot_exp1():
     )
     savefig("exp1_baseline_comparison.png")
 
-
-# ----------------------------
-# Exp2 plots
-# ----------------------------
 def plot_grouped_bars(df: pd.DataFrame, title: str, output_name: str):
     pivot = df.pivot(index="test_hub", columns="algo", values="rmse_ret_mean")
 
@@ -220,10 +197,6 @@ def plot_exp2():
 
     plot_exp2_comparison(exp2b, exp2c)
 
-
-# ----------------------------
-# Exp3 plots
-# ----------------------------
 def load_exp3_final_summary():
     rows = []
     for path in EXP3_FILES:
@@ -261,7 +234,6 @@ def plot_exp3():
         .sort_values("sigma")
     )
 
-    # 1) Canary RMSE vs sigma
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.errorbar(
         agg["sigma"],
@@ -278,7 +250,6 @@ def plot_exp3():
     )
     savefig("exp3_canary_rmse_vs_sigma.png")
 
-    # 2) Return RMSE vs sigma
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.errorbar(
         agg["sigma"],
@@ -295,7 +266,6 @@ def plot_exp3():
     )
     savefig("exp3_rmse_ret_vs_sigma.png")
 
-    # 3) Price-implied RMSE vs sigma
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.errorbar(
         agg["sigma"],
@@ -312,7 +282,6 @@ def plot_exp3():
     )
     savefig("exp3_rmse_price_vs_sigma.png")
 
-    # 4) Privacy-utility scatter
     fig, ax = plt.subplots(figsize=(7, 4.8))
     ax.scatter(agg["canary_mean"], agg["rmse_ret_mean"])
     for _, row in agg.iterrows():
@@ -325,7 +294,6 @@ def plot_exp3():
     )
     savefig("exp3_privacy_utility_scatter.png")
 
-    # 5) Per-seed canary lines across sigma
     fig, ax = plt.subplots(figsize=(7.5, 4.8))
     for seed, sub in summary.groupby("seed"):
         sub = sub.sort_values("sigma")
@@ -339,14 +307,10 @@ def plot_exp3():
     )
     savefig("exp3_canary_per_seed.png")
 
-    # Save summary table too
     summary.to_csv(OUT_DIR / "exp3_final_round_per_seed_summary.csv", index=False)
     agg.to_csv(OUT_DIR / "exp3_final_round_aggregated_summary.csv", index=False)
 
 
-# ----------------------------
-# Main
-# ----------------------------
 def main():
     plot_exp1()
     plot_exp2()

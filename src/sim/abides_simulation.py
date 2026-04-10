@@ -13,7 +13,6 @@ from src.data.hub_price_loader import get_price_for_hub_date
 
 SCALE = 10_000
 
-# where outputs go
 OUT_DIR = Path(__file__).resolve().parents[2] / "data" / "simulated_trades"
 
 def _debug_exchange_trades(end_state: dict, symbol: str = "ABM") -> None:
@@ -28,7 +27,6 @@ def _debug_exchange_trades(end_state: dict, symbol: str = "ABM") -> None:
     if ex is None:
         return
 
-    # what symbols exist?
     try:
         print("[DEBUG] exchange order_books keys:", list(ex.order_books.keys())[:10])
     except Exception as e:
@@ -45,7 +43,6 @@ def _debug_exchange_trades(end_state: dict, symbol: str = "ABM") -> None:
     tape = getattr(ob, "tape", None)
     if tape is None:
         print("[DEBUG] order book has no .tape attribute")
-        # list possible trade-ish attrs
         cand = [x for x in dir(ob) if any(k in x.lower() for k in ["tape", "trade", "trans", "fill"])]
         print("[DEBUG] candidate order book attrs:", cand[:50])
         return
@@ -59,21 +56,11 @@ def _debug_exchange_trades(end_state: dict, symbol: str = "ABM") -> None:
         print("[DEBUG] tape exists but cannot inspect:", repr(e))
 
 def get_r_bar_for_date(date: str, hub: str = "TTF", prices_csv: str = "data/eu_hub_prices.csv") -> float:
-    """
-    Returns oracle fundamental mean (r_bar) in ABIDES price units.
-    """
     p = float(get_price_for_hub_date(hub=hub, date_str=date, csv_path=prices_csv))
     return p * SCALE
 
 
 def run_rmsc04_simulation(date: str, hub: str = "TTF", prices_csv: str = "data/eu_hub_prices.csv"):
-    """
-    Runs one ABIDES simulation day.
-
-    We try to pass (hub, prices_csv) into rmsc04.build_config if supported.
-    If your rmsc04.build_config doesn't accept them, we fall back cleanly.
-    """
-    # Build config robustly (works whether rmsc04 accepts extra kwargs or not)
     try:
         config = rmsc04.build_config(
             seed=123,
@@ -83,8 +70,6 @@ def run_rmsc04_simulation(date: str, hub: str = "TTF", prices_csv: str = "data/e
             prices_csv=prices_csv,
         )
     except TypeError:
-        # Your rmsc04.build_config signature may not include hub/prices_csv.
-        # That's fine as long as rmsc04.py reads the hub prices internally from your loader setup.
         config = rmsc04.build_config(
             seed=123,
             date=date,
@@ -93,9 +78,8 @@ def run_rmsc04_simulation(date: str, hub: str = "TTF", prices_csv: str = "data/e
 
     end_state = abides.run(config)
 
-    # Optional debug
     try:
-        exch = end_state["agents"][0]  # ExchangeAgent
+        exch = end_state["agents"][0]  
         print("[DEBUG] exchange order_books keys:", list(exch.order_books.keys())[:10])
     except Exception:
         pass
@@ -108,13 +92,6 @@ def run_and_save_agent_features(
     hub: str = "TTF",
     prices_csv: str = "data/eu_hub_prices.csv",
 ) -> Path:
-    """
-    Runs ABIDES for one date and saves:
-    1) agent-level microstructure features
-    2) day-level oracle summary (r_bar) + exchange trade stats
-
-    Files are hub-namespaced to avoid overwriting across hubs.
-    """
     hub = str(hub).strip().upper()
 
     end_state = run_rmsc04_simulation(date=date, hub=hub, prices_csv=prices_csv)
@@ -128,9 +105,6 @@ def run_and_save_agent_features(
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ---------------------------
-    # Exchange/order-book trade stats (fills + volume)
-    # ---------------------------
     fills_buy = fills_sell = fills_total = 0
     vol_buy = vol_sell = vol_total = 0.0
     last_trade = None
@@ -163,36 +137,27 @@ def run_and_save_agent_features(
     except Exception as e:
         print("[WARN] could not extract exchange trade stats:", repr(e))
 
-    # ---------------------------
-    # 1) Save agent-level features
-    # ---------------------------
     df = extract_agent_features(end_state, date)
 
-    # ensure date is correct + move it to front
     df["date"] = date
     cols = ["date"] + [c for c in df.columns if c != "date"]
     df = df[cols]
 
-    # helpful provenance columns (won't break anything downstream)
     df.insert(0, "hub", hub)
 
     features_path = OUT_DIR / f"agent_features_{hub}_{date}.csv"
     df.to_csv(features_path, index=False)
     print(f"[OK] Saved {len(df)} rows -> {features_path}")
 
-    # ---------------------------
-    # 2) Save oracle day summary (+ trade stats)
-    # ---------------------------
     r_bar = get_r_bar_for_date(date=date, hub=hub, prices_csv=prices_csv)
 
     summary = pd.DataFrame([{
         "date": date,
         "hub": hub,
         "prices_csv": prices_csv,
-        "r_bar": float(r_bar),                 # ABIDES units
-        "r_bar_scaled": float(r_bar / SCALE),  # back to €/MWh-like units
+        "r_bar": float(r_bar),                 
+        "r_bar_scaled": float(r_bar / SCALE),  
 
-        # trade stats
         "fills_buy": fills_buy,
         "fills_sell": fills_sell,
         "fills_total": fills_total,

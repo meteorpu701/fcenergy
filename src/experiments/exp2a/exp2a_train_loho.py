@@ -35,11 +35,10 @@ def _parse_args():
 
 
 def _select_feature_columns(df: pd.DataFrame) -> list[str]:
-    # identifiers / labels / metadata we must exclude
     drop_cols = {
         "hub", "date", "symbol", "features_file",
         "target_next_price", "target_next_date",
-        "log_ret_next",  # <- target for option A, must not be in X
+        "log_ret_next", 
     }
     cols = []
     for c in df.columns:
@@ -68,12 +67,10 @@ def main():
     if missing:
         raise KeyError(f"Dataset missing required columns: {sorted(missing)}")
 
-    # enforce numeric
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
     df["target_next_price"] = pd.to_numeric(df["target_next_price"], errors="coerce")
     df["log_ret_next"] = pd.to_numeric(df["log_ret_next"], errors="coerce")
 
-    # drop rows where target or price info is missing
     df = df.dropna(subset=["hub", "price", "target_next_price", "log_ret_next"]).copy()
 
     hubs = sorted(df["hub"].unique().tolist())
@@ -89,7 +86,6 @@ def main():
         train_df = df[df["hub"] != test_hub].copy()
         test_df = df[df["hub"] == test_hub].copy()
 
-        # drop feature columns that are ALL NaN in TRAIN
         keep_cols = [c for c in feat_cols_all if train_df[c].notna().any()]
         if not keep_cols:
             raise ValueError(f"All feature columns are NaN in training split when holding out {test_hub}.")
@@ -100,7 +96,6 @@ def main():
         X_test = test_df[keep_cols].to_numpy()
         y_test = test_df["log_ret_next"].to_numpy()
 
-        # For price-space evaluation we need today's and true next price
         p_today = test_df["price"].to_numpy()
         p_next_true = test_df["target_next_price"].to_numpy()
 
@@ -121,14 +116,11 @@ def main():
         pipe.fit(X_train, y_train)
         r_pred = pipe.predict(X_test)
 
-        # --- Return-space metrics (Option A main)
         rmse_ret = _rmse(y_test, r_pred)
         mae_ret = float(mean_absolute_error(y_test, r_pred))
 
-        # --- Convert to implied next-day price and evaluate
         p_next_pred = p_today * np.exp(r_pred)
 
-        # guard finite
         mask_p = np.isfinite(p_next_pred) & np.isfinite(p_next_true)
         rmse_price = _rmse(p_next_true[mask_p], p_next_pred[mask_p])
         mae_price = float(mean_absolute_error(p_next_true[mask_p], p_next_pred[mask_p]))
@@ -147,12 +139,10 @@ def main():
         }
 
         if args.use_baseline:
-            # Baseline A: predict r=0 (random walk)
             r0 = np.zeros_like(y_test)
             rec["baseline_rmse_ret"] = _rmse(y_test, r0)
             rec["baseline_mae_ret"] = float(mean_absolute_error(y_test, r0))
 
-            # Equivalent baseline in price space: predict next price = today's price
             p_base = p_today
             mask_b = np.isfinite(p_base) & np.isfinite(p_next_true)
             rec["baseline_rmse_price"] = _rmse(p_next_true[mask_b], p_base[mask_b])

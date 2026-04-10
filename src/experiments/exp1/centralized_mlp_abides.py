@@ -45,14 +45,12 @@ def main():
     X_train, X_test = X[:split], X[split:]
     y_train, y_test = y[:split], y[split:]
 
-    # standardize X (train stats)
     mu = np.nanmean(X_train, axis=0)
     sigma = np.nanstd(X_train, axis=0)
     sigma[sigma == 0] = 1.0
     X_train = (X_train - mu) / sigma
     X_test = (X_test - mu) / sigma
 
-    # standardize y (train stats)
     y_mu = float(np.mean(y_train))
     y_sigma = float(np.std(y_train))
     if y_sigma == 0:

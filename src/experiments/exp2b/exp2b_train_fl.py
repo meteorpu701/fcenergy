@@ -23,23 +23,14 @@ from src.fl.core.federated_client import (
 from src.fl.core.fed_model import MLPRegressor
 
 
-# ============================================================
-# CONFIG
-# ============================================================
-
 REQUIRED_COLS = {"hub", "price", "target_next_price", "log_ret_next"}
 
 DROP_COLS = {
     "hub", "date", "symbol", "features_file",
     "target_next_price", "target_next_date",
-    "log_ret_next",  # target
-    "price",         # used for implied-price eval, not as feature
+    "log_ret_next",  
+    "price",     
 }
-
-
-# ============================================================
-# ARGUMENTS
-# ============================================================
 
 def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
@@ -51,7 +42,6 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--best_out", default=None,
                     help="Optional CSV path to write 1-row best summary.")
 
-    # algorithm
     ap.add_argument(
         "--algo",
         default="fedavg",
@@ -61,13 +51,11 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--mu", type=float, default=0.01,
                     help="FedProx proximal strength (only used when --algo fedprox)")
 
-    # LOHO
     ap.add_argument("--test_hub", default=None)
     ap.add_argument("--all_test", action="store_true")
     ap.add_argument("--min_test_rows", type=int, default=20,
                     help="Skip hub if test set smaller than this.")
 
-    # training
     ap.add_argument("--rounds", type=int, default=200)
     ap.add_argument("--clients_per_round", type=int, default=None)
     ap.add_argument("--local_epochs", type=int, default=5)
@@ -75,19 +63,13 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--batch_size", type=int, default=32)
     ap.add_argument("--seed", type=int, default=123)
 
-    # evaluation
     ap.add_argument("--eval_every", type=int, default=1)
     ap.add_argument("--patience", type=int, default=30)
-    # Krum hyperparam
     ap.add_argument("--krum_f", type=int, default=0,
                 help="Krum Byzantine count f. Must satisfy n_clients >= 2f+3 (with 3 hubs, f must be 0).")
 
     return ap.parse_args()
 
-
-# ============================================================
-# DATA HELPERS
-# ============================================================
 
 def _select_feature_columns(df: pd.DataFrame) -> List[str]:
     cols: List[str] = []
@@ -125,10 +107,6 @@ def _fit_transform_train_only(train_df: pd.DataFrame,
     return X_train.astype(float), X_test.astype(float)
 
 
-# ============================================================
-# METRICS
-# ============================================================
-
 def _rmse(y_true, y_pred) -> float:
     y_true = np.asarray(y_true, dtype=float).reshape(-1)
     y_pred = np.asarray(y_pred, dtype=float).reshape(-1)
@@ -155,17 +133,7 @@ def _predict(model, loader: DataLoader, device: str = "cpu") -> tuple[np.ndarray
 
     return np.concatenate(preds), np.concatenate(ys)
 
-
-# ============================================================
-# BASELINES
-# ============================================================
-
 def _baseline_metrics(test_df: pd.DataFrame) -> dict:
-    """
-    Baselines for Option A:
-      - return baseline: r_pred = 0
-      - price baseline: p_next_pred = p_today
-    """
     r_true = pd.to_numeric(test_df["log_ret_next"], errors="coerce").to_numpy(dtype=float).reshape(-1)
     p_today = pd.to_numeric(test_df["price"], errors="coerce").to_numpy(dtype=float).reshape(-1)
     p_next = pd.to_numeric(test_df["target_next_price"], errors="coerce").to_numpy(dtype=float).reshape(-1)
@@ -185,11 +153,6 @@ def _baseline_metrics(test_df: pd.DataFrame) -> dict:
 
     return out
 
-
-# ============================================================
-# FedNova + SCAFFOLD utilities
-# ============================================================
-
 @torch.no_grad()
 def _compute_delta(local_w: Dict[str, torch.Tensor], global_w: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     d: Dict[str, torch.Tensor] = {}
@@ -199,10 +162,6 @@ def _compute_delta(local_w: Dict[str, torch.Tensor], global_w: Dict[str, torch.T
 
 
 def _zeros_like_state(weights: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-    """
-    Make a 'control variate' dict with same keys as weights.
-    Floats -> zeros_like; non-floats -> keep as-is (safe placeholder).
-    """
     z: Dict[str, torch.Tensor] = {}
     for k, v in weights.items():
         if torch.is_tensor(v) and torch.is_floating_point(v):
@@ -211,10 +170,6 @@ def _zeros_like_state(weights: Dict[str, torch.Tensor]) -> Dict[str, torch.Tenso
             z[k] = v
     return z
 
-
-# ============================================================
-# ONE LOHO RUN
-# ============================================================
 
 def run_one_test_hub(df: pd.DataFrame,
                      test_hub: str,
@@ -231,23 +186,36 @@ def run_one_test_hub(df: pd.DataFrame,
 
     use_loho = (n_hubs >= 3)
 
-    # If using LOHO, we need a valid test_hub.
     if use_loho:
         if test_hub not in hubs:
             raise ValueError(f"test_hub={test_hub} not in hubs={hubs}")
         train_hubs = [h for h in hubs if h != test_hub]
     else:
-        # 2-hub mode: train uses BOTH hubs as clients
-        train_hubs = hubs[:]  # e.g., [NBP, TTF]
-        # test_hub is optional: if provided, we’ll report on it; otherwise pooled test.
+        train_hubs = hubs[:]  
         if test_hub is not None and test_hub not in hubs:
             raise ValueError(f"test_hub={test_hub} not in hubs={hubs}")
         if test_hub not in hubs:
             raise ValueError(f"test_hub={test_hub} not in hubs={hubs}")
 
 
-    train_df = df[df["hub"].isin(train_hubs)].copy()
-    test_df = df[df["hub"] == test_hub].copy()
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date", "hub", "price", "target_next_price", "log_ret_next"]).copy()
+
+    if use_loho:
+        train_df = df[df["hub"].isin(train_hubs)].copy()
+        test_df  = df[df["hub"] == test_hub].copy()
+    else:
+        dates = sorted(df["date"].unique())
+        cut = int(len(dates) * 0.8)  
+        cut = min(max(cut, 1), len(dates) - 1)
+        cutoff = dates[cut]
+
+        train_df = df[df["date"] < cutoff].copy()
+        test_df  = df[df["date"] >= cutoff].copy()
+
+    if test_hub is not None:
+        test_df = test_df[test_df["hub"] == test_hub].copy()
     
     train_df = train_df.dropna(subset=list(REQUIRED_COLS)).copy()
     test_df = test_df.dropna(subset=list(REQUIRED_COLS)).copy()
@@ -271,7 +239,6 @@ def run_one_test_hub(df: pd.DataFrame,
     p_today = pd.to_numeric(test_df["price"], errors="coerce").to_numpy(dtype=float).reshape(-1)
     p_next_true = pd.to_numeric(test_df["target_next_price"], errors="coerce").to_numpy(dtype=float).reshape(-1)
 
-    # Build client loaders (hub-as-client)
     train_df = train_df.reset_index(drop=True)
     clients: dict[str, DataLoader] = {}
 
@@ -291,13 +258,9 @@ def run_one_test_hub(df: pd.DataFrame,
         shuffle=False,
     )
 
-    # Model + server
     d_in = X_train_all.shape[1]
     global_model = MLPRegressor(d_in)
 
-    # Server algorithm mapping:
-    # - fedprox is a client update rule; server aggregation stays fedavg
-    # - fedavg/fednova/scaffold use server-side aggregators
     server_algo = "fedavg" if algo == "fedprox" else algo
     agg_kwargs = {}
     agg_kwargs = None
@@ -312,25 +275,15 @@ def run_one_test_hub(df: pd.DataFrame,
 
     server = FederatedServer(model=global_model, algorithm=server_algo, agg_kwargs=agg_kwargs)
 
-    # RNG / determinism (lightweight)
     rng = np.random.default_rng(int(args.seed))
     torch.manual_seed(int(args.seed))
 
     clients_per_round = int(args.clients_per_round) if args.clients_per_round is not None else len(train_hubs)
     clients_per_round = min(clients_per_round, len(train_hubs))
 
-    # SCAFFOLD state:
-    # server.server_state["c"] = global control variate
-    # client_c[h] = local control variate for hub h (persistent across rounds)
-    # ---- SCAFFOLD state (named params only) ----
-    # Initialize per-client local control variates (for scaffold only)
-    # ----------------------------
-# SCAFFOLD control variates
-# ----------------------------
     c_locals = None
     if algo == "scaffold":
-        # local control variate per client (hub)
-        c0 = server.server_state["c"]  # created by FederatedServer when algorithm="scaffold"
+        c0 = server.server_state["c"] 
         c_locals = {h: {k: v.clone() for k, v in c0.items()} for h in train_hubs}
     best = float("inf")
     best_state = None
@@ -359,7 +312,7 @@ def run_one_test_hub(df: pd.DataFrame,
                     model=model,
                     loader=clients[h],
                     global_weights=global_weights,
-                    c_global=server.server_state["c"],   # ✅ use server c
+                    c_global=server.server_state["c"],  
                     c_local=c_locals[h],
                     lr=float(args.lr),
                     epochs=int(args.local_epochs),
@@ -389,7 +342,6 @@ def run_one_test_hub(df: pd.DataFrame,
                     device="cpu",
                 )
             else:
-                # fedavg / fednova both use normal local training; server decides aggregation
                 update = client_fit_fedavg(
                     model=model,
                     loader=clients[h],
@@ -399,7 +351,6 @@ def run_one_test_hub(df: pd.DataFrame,
                     device="cpu",
                 )
 
-            # FedNova requires delta + n_steps (your updated client_fit_* already provides them)
             if algo == "fednova":
                 if "n_steps" not in update:
                     update["n_steps"] = 1
@@ -424,7 +375,6 @@ def run_one_test_hub(df: pd.DataFrame,
         mae_price = _mae(p_next_true[mask], p_next_pred[mask]) if mask.any() else float("nan")
 
         logs.append({
-            # identifiers / knobs
             "test_hub": test_hub,
             "algo": algo,
             "server_algo": server_algo,
@@ -435,13 +385,11 @@ def run_one_test_hub(df: pd.DataFrame,
             "lr": float(args.lr),
             "mu": float(args.mu) if algo == "fedprox" else np.nan,
 
-            # metrics
             "rmse_ret": float(rmse_ret),
             "mae_ret": float(mae_ret),
             "rmse_price_implied": float(rmse_price),
             "mae_price_implied": float(mae_price),
 
-            # baselines (constant per hub)
             "baseline_rmse_ret": float(base["baseline_rmse_ret"]),
             "baseline_mae_ret": float(base["baseline_mae_ret"]),
             "baseline_rmse_price": float(base["baseline_rmse_price"]),
@@ -480,11 +428,6 @@ def run_one_test_hub(df: pd.DataFrame,
             pd.DataFrame([best_row]).to_csv(best_path, index=False)
 
     return out
-
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
     args = _parse_args()

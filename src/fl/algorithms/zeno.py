@@ -6,24 +6,6 @@ import torch
 
 
 class Zeno:
-    """
-    Zeno-style robust aggregation via update filtering.
-
-    Expected per-client update dict:
-      - "weights": state_dict  (optional if "delta" provided)
-      - "delta": state_dict of local - global (preferred)
-      - "n_samples": int
-      - "train_loss": float   (proxy score term)
-
-    Scoring (proxy):
-      score_i = -(train_loss_i) - rho * ||delta_i||^2
-
-    Keep top-k by score, then FedAvg over survivors (by n_samples).
-
-    Notes:
-      - This is a pragmatic proxy that doesn't require server-side data.
-      - Non-floating tensors are kept from server (like FedNova/FedAvg patterns).
-    """
 
     name = "zeno"
 
@@ -38,7 +20,6 @@ class Zeno:
 
         global_w = server_state["weights"]
 
-        # ---- build deltas + scores ----
         scored = []
         for i, u in enumerate(client_updates):
             if "n_samples" not in u:
@@ -46,7 +27,6 @@ class Zeno:
             if "train_loss" not in u:
                 raise KeyError(f"client_updates[{i}] missing train_loss (Zeno proxy needs it)")
 
-            # delta preferred, else compute from weights
             if "delta" in u and u["delta"] is not None:
                 delta = u["delta"]
             else:
@@ -55,7 +35,6 @@ class Zeno:
                 local = u["weights"]
                 delta = {param_name: (local[param_name] - global_w[param_name]) for param_name in global_w.keys()}
 
-            # L2 norm over floating tensors only
             sq = 0.0
             for param_name, g in global_w.items():
                 if not torch.is_tensor(g) or (not torch.is_floating_point(g)):
@@ -69,17 +48,15 @@ class Zeno:
 
             scored.append((score, u, delta))
 
-        # ---- keep top-k by score ----
         scored.sort(key=lambda t: t[0], reverse=True)
 
         n = len(scored)
-        k_keep = int(self.keep_frac * n)  # floor
+        k_keep = int(self.keep_frac * n) 
         k_keep = max(self.min_keep, k_keep)
         k_keep = min(n, k_keep)
 
         survivors = scored[:k_keep]
 
-        # ---- weighted average of deltas (FedAvg on survivors) ----
         sample_counts = [int(u["n_samples"]) for (_, u, _) in survivors]
         total = sum(sample_counts)
         if total <= 0:
@@ -102,7 +79,6 @@ class Zeno:
 
             new_w[kparam] = w0 + acc
 
-        # optional debug stats saved in server_state (won't break anything)
         server_state = dict(server_state)
         server_state["zeno_kept"] = k_keep
         server_state["zeno_total"] = len(client_updates)

@@ -6,25 +6,15 @@ RAW_PATH = DATA_DIR / "Henry_Hub_Natural_Gas_Spot_Price.csv"
 OUT_PATH = DATA_DIR / "hub_prices_processed.csv"
 
 def preprocess_henry_hub_raw():
-    """
-    Clean the raw Henry Hub CSV downloaded from EIA and convert it to:
-
-        date, price
-
-    saved as data/real_hub_prices.csv
-    """
     print(f"Loading raw Henry Hub data from: {RAW_PATH}")
 
-    # Header is on the 5th line (index 4), separator is comma
     df = pd.read_csv(RAW_PATH, header=4)
 
     print("Raw columns:", df.columns.tolist())
 
-    # Identify date & price columns robustly
     date_col = [c for c in df.columns if "Day" in c or "Date" in c][0]
     price_col = [c for c in df.columns if "Price" in c][0]
 
-    # Strip whitespace and convert types
     df[date_col] = df[date_col].astype(str).str.strip()
     df[price_col] = df[price_col].astype(str).str.strip()
 
@@ -33,7 +23,6 @@ def preprocess_henry_hub_raw():
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
 
-    # Drop rows with missing values and sort
     df = df.dropna(subset=["date", "price"]).sort_values("date")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)

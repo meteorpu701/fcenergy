@@ -13,14 +13,10 @@ def main():
     parts = []
     for f in files:
         df = pd.read_csv(f)
-
-        # ensure date exists (some versions already have it)
         if "date" not in df.columns:
-            # filename agent_features_YYYY-MM-DD.csv
             date_str = f.stem.replace("agent_features_", "")
             df["date"] = date_str
 
-        # keep only agent rows (drop exchange if present)
         if "agent_type" in df.columns:
             df = df[df["agent_type"] != "ExchangeAgent"].copy()
 
@@ -28,11 +24,9 @@ def main():
 
     out = pd.concat(parts, ignore_index=True)
 
-    # normalize dtypes
     out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.strftime("%Y-%m-%d")
     out = out.dropna(subset=["date"])
 
-    # save
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(OUT_PATH, index=False)
     print(f"[OK] Saved dataset: {OUT_PATH}  rows={len(out)}  cols={len(out.columns)}")

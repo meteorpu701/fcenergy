@@ -16,17 +16,12 @@ def main():
 
     print(f"[INFO] rows={len(df)}")
 
-    # ---- time split ----
     split = int(len(df) * 0.8)
     train = df.iloc[:split]
     test = df.iloc[split:]
 
     print(f"[INFO] train={len(train)} test={len(test)}")
 
-    # =====================================
-    # 1️⃣ Naive AR1 baseline
-    # y_{t+1} = y_t
-    # =====================================
     naive_pred = test["abides_price"].values
     y_true = test[TARGET].values
 
@@ -34,9 +29,6 @@ def main():
     print("MAE:", mean_absolute_error(y_true, naive_pred))
     print("RMSE:", rmse(y_true, naive_pred))
 
-    # =====================================
-    # 2️⃣ AR-only Ridge
-    # =====================================
     ar_cols = [c for c in df.columns if c.startswith("abides_price_lag")]
 
     X_train_ar = train[ar_cols]
@@ -53,9 +45,6 @@ def main():
     print("MAE:", mean_absolute_error(y_test, pred_ar))
     print("RMSE:", rmse(y_test, pred_ar))
 
-    # =====================================
-    # 3️⃣ ARX Ridge (lags + microstructure)
-    # =====================================
     exclude_cols = {"date", TARGET, "ttf_price"}
     feature_cols = [c for c in df.columns if c not in exclude_cols]
 

@@ -15,13 +15,10 @@ class FederatedServer:
         if self.algorithm not in AGGREGATORS:
             raise ValueError(f"Unknown algorithm={self.algorithm}. Available={list(AGGREGATORS.keys())}")
 
-        # Instantiate aggregator (supports params for Zeno etc.)
         self.aggregator = AGGREGATORS[self.algorithm](**(agg_kwargs or {}))
 
-        # Single source of truth for server state
         self.server_state = {"weights": model.state_dict()}
 
-        # Scaffold needs global control variate in server_state
         if self.algorithm == "scaffold":
             self.server_state["c"] = {
                 name: torch.zeros_like(p.data)
@@ -29,13 +26,6 @@ class FederatedServer:
             }
 
     def aggregate(self, client_updates):
-        """
-        client_updates format:
-        [
-            {"weights": state_dict, "n_samples": int, ...},
-            ...
-        ]
-        """
         self.server_state = self.aggregator.aggregate(self.server_state, client_updates)
         self.model.load_state_dict(self.server_state["weights"])
 

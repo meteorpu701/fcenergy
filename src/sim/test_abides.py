@@ -1,13 +1,6 @@
-"""
-Smoke test to check whether ABIDES-JPMC is correctly installed
-and functional inside this environment.
-"""
-
 import traceback
 
 print("=== ABIDES Installation Test ===")
-
-# 1. Test imports -----------------------------------------------------------
 
 try:
     from abides_core import abides
@@ -25,23 +18,17 @@ except Exception as e:
     traceback.print_exc()
     exit(1)
 
-
-# 2. Build config -----------------------------------------------------------
-
 try:
     config = rmsc04.build_config(
         seed=123,
-        date="20250101",   # correct parameter for this ABIDES version
-        log_orders=False            # speeds up runtime
+        date="20250101",  
+        log_orders=False   
     )
     print("[OK] Config built successfully.")
 except Exception as e:
     print("[ERROR] Failed to build RMSC04 config.")
     traceback.print_exc()
     exit(1)
-
-
-# 3. Run a short simulation -------------------------------------------------
 
 try:
     print("[INFO] Running ABIDES simulation... (this may take a moment)")
@@ -51,9 +38,6 @@ except Exception as e:
     print("[ERROR] ABIDES run failed.")
     traceback.print_exc()
     exit(1)
-
-
-# 4. Inspect results --------------------------------------------------------
 
 try:
     agents = end_state.get("agents", {})

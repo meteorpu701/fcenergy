@@ -19,20 +19,16 @@ def _parse_args():
     ap.add_argument("--mu", type=float, default=0.01, help="FedProx mu (only used for fedprox)")
     ap.add_argument("--min_test_rows", type=int, default=20)
 
-    # seeds
     ap.add_argument("--seeds", default="0,1,2,3,4", help="Comma-separated seeds (default: 0,1,2,3,4)")
 
-    # training hyperparams
     ap.add_argument("--rounds", type=int, default=200)
     ap.add_argument("--clients_per_round", type=int, default=None)
     ap.add_argument("--local_epochs", type=int, default=5)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--batch_size", type=int, default=32)
 
-    # eval / early stop
     ap.add_argument("--eval_every", type=int, default=1)
     ap.add_argument("--patience", type=int, default=30)
-    # ---- Zeno hyperparameters ----
     ap.add_argument("--zeno_keep_frac", type=float, default=0.67)
     ap.add_argument("--zeno_rho", type=float, default=1e-3)
     ap.add_argument("--zeno_min_keep", type=int, default=1)
@@ -70,7 +66,6 @@ def main():
 
     df = pd.read_csv(ds_path)
 
-    # minimal cleanup
     must_num = ["price", "target_next_price", "log_ret_next"]
     df = _ensure_numeric(df, must_num)
     df = df.dropna(subset=["hub", "price", "target_next_price", "log_ret_next"]).copy()
@@ -90,17 +85,15 @@ def main():
 
     for algo in algos:
         for test_hub in hubs:
-            # optional filter: require enough test rows (so we don't get the 1-row case)
             n_test = int((df["hub"] == test_hub).sum())
             if args.min_test_rows and n_test < int(args.min_test_rows):
                 print(f"[SKIP] test_hub={test_hub} (test_rows={n_test} < min_test_rows={args.min_test_rows})")
                 continue
 
             for seed in seeds:
-                # Build a train-args-like Namespace expected by run_one_test_hub
                 train_args = argparse.Namespace(
                     dataset=args.dataset,
-                    out=str(out_dir / f"_tmp_{algo}_{test_hub}_{seed}.csv"),  # run_one_test_hub doesn't need this
+                    out=str(out_dir / f"_tmp_{algo}_{test_hub}_{seed}.csv"), 
                     algo=algo,
                     mu=float(args.mu),
                     test_hub=test_hub,
@@ -126,7 +119,6 @@ def main():
                     print(f"[WARN] empty run_df for algo={algo} test_hub={test_hub} seed={seed}")
                     continue
 
-                # ---- ensure numeric before choosing "best" ----
                 for c in ["rmse_ret", "mae_ret", "rmse_price_implied",
                         "baseline_rmse_ret", "baseline_mae_ret",
                         "baseline_rmse_price", "baseline_mae_price",
@@ -134,20 +126,17 @@ def main():
                     if c in run_df.columns:
                         run_df[c] = pd.to_numeric(run_df[c], errors="coerce")
 
-                # drop rows where rmse_ret is missing (cannot rank)
                 run_df = run_df.dropna(subset=["rmse_ret"]).copy()
                 if run_df.empty:
                     print(f"[WARN] all rmse_ret NaN for algo={algo} test_hub={test_hub} seed={seed}")
                     continue
 
-                # Make sure seed exists as a column (helpful even if train_fl already logs it)
                 if "seed" not in run_df.columns:
                     run_df = run_df.copy()
                     run_df["seed"] = seed
 
                 all_round_logs.append(run_df)
 
-                # Best row for this (algo, hub, seed)
                 best = run_df.sort_values("rmse_ret").iloc[0].to_dict()
                 best["seed"] = seed
                 best["test_hub"] = test_hub
@@ -157,9 +146,6 @@ def main():
     if not all_best_rows:
         raise RuntimeError("No runs produced any results. Check filters (min_test_rows) and dataset content.")
 
-    # ------------------------------------------------------------
-    # Write raw logs
-    # ------------------------------------------------------------
     round_logs_df = pd.concat(all_round_logs, ignore_index=True) if all_round_logs else pd.DataFrame()
     best_logs_df = pd.DataFrame(all_best_rows)
 
@@ -173,17 +159,12 @@ def main():
     best_logs_df.to_csv(best_logs_path, index=False)
     print(f"[OK] wrote best-per-run logs -> {best_logs_path} rows={len(best_logs_df)}")
 
-    # ------------------------------------------------------------
-    # Aggregate across seeds: mean/std per (test_hub, algo)
-    # ------------------------------------------------------------
-    # Ensure expected numeric fields
     num_cols = [
         "rmse_ret", "mae_ret", "rmse_price_implied",
         "baseline_rmse_ret", "baseline_mae_ret", "baseline_rmse_price", "baseline_mae_price"
     ]
     best_logs_df = _ensure_numeric(best_logs_df, num_cols)
 
-    # Derived metrics
     best_logs_df["delta_rmse_ret"] = best_logs_df["rmse_ret"] - best_logs_df["baseline_rmse_ret"]
     best_logs_df["ratio_rmse_ret"] = best_logs_df["rmse_ret"] / best_logs_df["baseline_rmse_ret"]
 
@@ -198,13 +179,11 @@ def main():
     mean_df = grouped[agg_cols].mean(numeric_only=True)
     std_df = grouped[agg_cols].std(numeric_only=True).fillna(0.0)
 
-    # Rename columns to *_mean and *_std and merge
     mean_df = mean_df.rename(columns={c: f"{c}_mean" for c in agg_cols})
     std_df = std_df.rename(columns={c: f"{c}_std" for c in agg_cols})
 
     summary = pd.merge(mean_df, std_df, on=["test_hub", "algo"], how="inner")
 
-    # Keep a handy count of seeds actually present
     n_df = grouped["seed"].nunique().rename(columns={"seed": "n_seeds"})
     summary = pd.merge(summary, n_df, on=["test_hub", "algo"], how="left")
 

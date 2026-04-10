@@ -6,22 +6,6 @@ import torch
 
 
 class Krum:
-    """
-    Krum / Multi-Krum style robust aggregation.
-
-    Expects client_updates list of dicts with:
-      - "delta": state_dict of (local - global)  (preferred)
-        OR
-      - "weights": local state_dict (we will compute delta from server_state["weights"])
-      - "n_samples": int (not required by Krum, but allowed)
-
-    We compute pairwise distances between client deltas (L2 over floating tensors).
-    For each client i, score_i = sum of smallest (n - f - 2) distances to others.
-    Pick the client with minimal score (Krum), then apply its delta to global weights.
-
-    Constraint:
-      Need n >= 2f + 3, else undefined.
-    """
 
     name = "krum"
 
@@ -51,7 +35,6 @@ class Krum:
         if n < 2 * f + 3:
             raise ValueError(f"Krum requires n >= 2f + 3. Got n={n}, f={f}.")
 
-        # Build deltas for each client
         deltas: List[Dict[str, torch.Tensor]] = []
         for i, u in enumerate(client_updates):
             if "delta" in u and u["delta"] is not None:
@@ -65,13 +48,11 @@ class Krum:
                     if not torch.is_tensor(g) or (not torch.is_floating_point(g)):
                         continue
                     delta[k] = (local[k].to(device=g.device, dtype=g.dtype) - g).detach()
-            # Ensure every float param key exists
             for k, g in global_w.items():
                 if torch.is_tensor(g) and torch.is_floating_point(g) and k not in delta:
                     delta[k] = torch.zeros_like(g)
             deltas.append(delta)
 
-        # Pairwise distances between deltas
         dist = [[0.0] * n for _ in range(n)]
         for i in range(n):
             for j in range(i + 1, n):
@@ -79,7 +60,6 @@ class Krum:
                 dist[i][j] = d
                 dist[j][i] = d
 
-        # Krum score: sum of smallest (n - f - 2) distances
         m = n - f - 2
         scores: List[Tuple[float, int]] = []
         for i in range(n):
@@ -90,7 +70,6 @@ class Krum:
         scores.sort(key=lambda t: t[0])
         best_i = scores[0][1]
 
-        # Apply chosen delta
         new_w = copy.deepcopy(global_w)
         for k, g in global_w.items():
             if not torch.is_tensor(g) or (not torch.is_floating_point(g)):
@@ -98,7 +77,6 @@ class Krum:
                 continue
             new_w[k] = g + deltas[best_i][k].to(device=g.device, dtype=g.dtype)
 
-        # Optional debug
         out = dict(server_state)
         out["krum_n"] = n
         out["krum_f"] = f

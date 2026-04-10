@@ -82,7 +82,6 @@ def eval_rmse(model: nn.Module, loader: DataLoader, device: str) -> float:
 
 
 def fedavg(state_dicts, weights):
-    # weighted average of model parameters
     avg = copy.deepcopy(state_dicts[0])
     for k in avg.keys():
         avg[k] = avg[k] * weights[0]
@@ -97,19 +96,16 @@ def main():
     X = df[FEATURES].astype(float).to_numpy()
     y = df[TARGET].astype(float).to_numpy()
 
-    # time split
     split = int(len(df) * 0.8)
     X_train, X_test = X[:split], X[split:]
     y_train, y_test = y[:split], y[split:]
 
-    # standardize using train stats
     mu = np.nanmean(X_train, axis=0)
     sigma = np.nanstd(X_train, axis=0)
     sigma[sigma == 0] = 1.0
     X_train = (X_train - mu) / sigma
     X_test = (X_test - mu) / sigma
 
-    # create K clients by chunking training days
     K = 10
     idx = np.arange(len(X_train))
     chunks = np.array_split(idx, K)
@@ -153,7 +149,6 @@ def main():
             local_states.append(copy.deepcopy(local_model.state_dict()))
             local_weights.append(len(Xm))
 
-        # normalize weights
         w = np.array(local_weights, dtype=float)
         w = (w / w.sum()).tolist()
 
